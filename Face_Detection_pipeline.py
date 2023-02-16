@@ -38,6 +38,10 @@ from track import run
 from track import lmdb_known
 from track import lmdb_unknown
 
+from nats.aio.client import Client as NATS
+
+nc_client = NATS()
+
 path1 = "./Nats_output"
 
 if os.path.exists(path1) is False:
@@ -84,7 +88,8 @@ image_arr = None
 device_types = ['', 'h.264', 'h.264', 'h.264', 'h.265', 'h.265', 'h.265']
 load_dotenv()
 
-       
+first_dev_id = []
+
 
 async def json_publish(primary):    
     nc = await nats.connect(servers=["nats://216.48.181.154:5222"] , reconnect_time_wait= 50 ,allow_reconnect=True, connect_timeout=20, max_reconnect_attempts=60)
@@ -100,107 +105,116 @@ async def json_publish(primary):
     print("Activity is getting published")
 
 async def Video_creating(file_id, device_data):
+    global  first_dev_id
     print("check")
     device_id = device_data[0]
     device_urn = device_data[1]
     timestampp = device_data[2]
-
-    #print(device_id)
-    #print(device_urn)
-    queue1 = Queue()
-
-    global avg_Batchcount_person, avg_Batchcount_vehicel,track_person,track_vehicle,detect_count
+    if (len(first_dev_id) <= 1) and (device_id not in first_dev_id):
+        first_dev_id.append(device_id)
+    #first_dev_id = list(set(first_dev_id))
     
-    file_id_str = str(file_id)
-    video_name1 = path1 + '/' + str(device_id) +'/Nats_video'+str(device_id)+'-'+file_id_str+'.mp4'
-    print(video_name1, [timestampp,device_id],queue1)
-    # det = Process(target= run(video_name1, [timestampp,device_id],queue1))
-    # det.start()
-    run(video_name1, [timestampp,device_id],queue1)
-    batch_output = queue1.get()
+    print(first_dev_id)
+    if device_id == first_dev_id[0]:
+        
+        #print(device_urn)
+        queue1 = Queue()
 
-    track_type = batch_output["track_type"]
-    track_person = batch_output["track_person"]
-    batch_person_id = batch_output["batch_person_id"]
-    detect_count = batch_output["detect_count"] 
-    avg_Batchcount_person = batch_output["avg_Batchcount_person"]
-    file_path = batch_output["save_dir"]
-    batchId = batch_output["batchid"]
+        global avg_Batchcount_person, avg_Batchcount_vehicel,track_person,track_vehicle,detect_count
+        
+        file_id_str = str(file_id)
+        video_name1 = path1 + '/' + str(device_id) +'/Nats_video'+str(device_id)+'-'+file_id_str+'.mp4'
+        print(video_name1, [timestampp,device_id],queue1)
+        # det = Process(target= run(video_name1, [timestampp,device_id],queue1))
+        # det.start()
+        
+        run(video_name1, [timestampp,device_id],queue1)
+            # rtsp_add_flag = False
 
-    #ipfs
-    # #print("################################")
-    # file_path = save_dir
-    # #print(file_path)
-    for path, dirs, files in os.walk(os.path.abspath(file_path)):
-        #print(path, dirs, files)
-        for filename in fnmatch.filter(files, "*.mp4"):
-            src_file = os.path.join(file_path, filename)
-            ##print(file_path)
-            # res = api.add(src_file)
-            # #print(res)
-            # res_cid = res[0]['Hash']
-            # #print(res_cid)
-            command = 'ipfs --api=/ip4/216.48.181.154/tcp/5001 add {file_path} -Q'.format(file_path=src_file)
-            #print(src_file)
-            output = sp.getoutput(command)
-            person_cid = output
-            #print(person_cid)
-        shutil.rmtree(path)
-    torch.cuda.empty_cache()
-            # video_cid.append(res_cid)
-    # #print("################################")
-    ct =  datetime.now(timezone("Asia/Kolkata")).strftime('%Y-%m-%d %H:%M:%S.%f')
-    metapeople ={
-                    "type":ast.literal_eval(track_type),
-                    "track":ast.literal_eval(track_person),
-                    "id":ast.literal_eval(batch_person_id),
-                    "activity":None ,
-                    "detect_time":str(timestamp)
-                    }
+        batch_output = queue1.get()
 
-    metaVehicle = {
-                    "type":None,
-                    "track":None,
-                    "id":None,
-                    "activity":None
-    }
-    metaElephant = {
-        "track":None,
-        "count":None
-    }
-    metaObj = {
-                "people":metapeople,
-                "vehicle":metaVehicle,
-                "elephant":metaElephant
-            }
-    
-    metaBatch = {
-        "detect": ast.literal_eval(detect_count),
-        "count": {"people_count":avg_Batchcount_person,
-                    "vehicle_count":None} ,
-                "object":metaObj,
-                "cid": person_cid
-    }
-    
-    primary = { "pipeline":"attendance",
-                "deviceid":str(device_urn),
-                "batchid":batchId, 
-                
-                "timestamp":str(ct), 
-                "geo": {"latitude":'12.913632983105556',
-                        "longitude":'77.58994246818435'},
-                "metaData": metaBatch}
-    print("***************************************************************************************")
-    print("***************************************************************************************")
-    print("***************************************************************************************")
+        track_type = batch_output["track_type"]
+        track_person = batch_output["track_person"]
+        batch_person_id = batch_output["batch_person_id"]
+        detect_count = batch_output["detect_count"] 
+        avg_Batchcount_person = batch_output["avg_Batchcount_person"]
+        file_path = batch_output["save_dir"]
+        batchId = batch_output["batchid"]
 
-    print(primary)
+        #ipfs
+        # #print("################################")
+        # file_path = save_dir
+        # #print(file_path)
+        for path, dirs, files in os.walk(os.path.abspath(file_path)):
+            #print(path, dirs, files)
+            for filename in fnmatch.filter(files, "*.mp4"):
+                src_file = os.path.join(file_path, filename)
+                ##print(file_path)
+                # res = api.add(src_file)
+                # #print(res)
+                # res_cid = res[0]['Hash']
+                # #print(res_cid)
+                command = 'ipfs --api=/ip4/216.48.181.154/tcp/5001 add {file_path} -Q'.format(file_path=src_file)
+                #print(src_file)
+                output = sp.getoutput(command)
+                person_cid = output
+                #print(person_cid)
+            shutil.rmtree(path)
+        torch.cuda.empty_cache()
+                # video_cid.append(res_cid)
+        # #print("################################")
+        ct =  datetime.now(timezone("Asia/Kolkata")).strftime('%Y-%m-%d %H:%M:%S.%f')
+        metapeople ={
+                        "type":ast.literal_eval(track_type),
+                        "track":ast.literal_eval(track_person),
+                        "id":ast.literal_eval(batch_person_id),
+                        "activity":None ,
+                        "detect_time":str(timestamp)
+                        }
 
-    print("***************************************************************************************")
-    print("***************************************************************************************")
-    print("***************************************************************************************")
+        metaVehicle = {
+                        "type":None,
+                        "track":None,
+                        "id":None,
+                        "activity":None
+        }
+        metaElephant = {
+            "track":None,
+            "count":None
+        }
+        metaObj = {
+                    "people":metapeople,
+                    "vehicle":metaVehicle,
+                    "elephant":metaElephant
+                }
+        
+        metaBatch = {
+            "detect": ast.literal_eval(detect_count),
+            "count": {"people_count":avg_Batchcount_person,
+                        "vehicle_count":None} ,
+                    "object":metaObj,
+                    "cid": person_cid
+        }
+        
+        primary = { "pipeline":"attendance",
+                    "deviceid":str(device_urn),
+                    "batchid":batchId, 
+                    
+                    "timestamp":str(ct), 
+                    "geo": {"latitude":'12.913632983105556',
+                            "longitude":'77.58994246818435'},
+                    "metaData": metaBatch}
+        print("***************************************************************************************")
+        print("***************************************************************************************")
+        print("***************************************************************************************")
 
-    await json_publish(primary=primary)
+        print(primary)
+
+        print("***************************************************************************************")
+        print("***************************************************************************************")
+        print("***************************************************************************************")
+
+        await json_publish(primary=primary)
 
 
     #await asyncio.sleep(1)
@@ -242,7 +256,12 @@ async def gst_data(file_id , device_data):
     logging.error("The program encountered an error")
     logging.critical("The program crashed")
 
-async def gst_stream(device_id, urn, location, device_type):
+async def gst_stream(gst_stream_data):
+
+    device_id = gst_stream_data[0]
+    urn = gst_stream_data[1]
+    location = gst_stream_data[2]
+    device_type = gst_stream_data[3]
 
     def format_location_callback(mux, file_id, data):
 
@@ -277,9 +296,9 @@ async def gst_stream(device_id, urn, location, device_type):
             os.makedirs(video_name, exist_ok=True)
         video_name = path1 + '/' + str(device_id) + '/Nats_video'+str(device_id)
         #print(video_name)
-        if(device_type == "h.264"):
+        if(device_type.lower() == "h264"):
             pipeline = Gst.parse_launch('rtspsrc location={location} protocols="tcp" name={device_id} ! identity name=ident-{device_id} ! rtph264depay name=depay-{device_id} ! h264parse name=parse-{device_id} ! splitmuxsink location={path}-%01d.mp4 max-size-time=20000000000 max-files=5 name=sink-{device_id}'.format(location=location, path=video_name, device_id = device_id))
-        elif(device_type == "h.265"):
+        elif(device_type.lower() == "h265"):
             pipeline = Gst.parse_launch('rtspsrc location={location} protocols="tcp" name={device_id} ! identity name=ident-{device_id} ! rtph265depay name=depay-{device_id} ! h265parse name=parse-{device_id} ! splitmuxsink location={path}-%01d.mp4 max-size-time=20000000000 max-files=5 name=sink-{device_id}'.format(location=location, path=video_name, device_id = device_id))
 
         sink = pipeline.get_by_name('sink-{device_id}'.format(device_id=device_id))
@@ -329,6 +348,30 @@ def on_message(bus: Gst.Bus, message: Gst.Message, loop: GLib.MainLoop):
         print(message.src)
     return True
 
+async def cb(msg):
+    try :
+        print("entered callback")
+        data = (msg.data)
+        data  = data.decode()
+        data = json.loads(data)
+        if "urn" not in data:
+            data["urn"] = "uuid:eaadf637-a191-4ae7-8156-07433934718b"
+        gst_stream_data = [data["deviceId"], data["urn"], data["rtsp"], data["videoEncodingInformation"]]
+        if (data):
+            p2 = Process(target = await gst_stream(gst_stream_data))
+            p2.start()
+            
+            # p3 = Process(target = await hls_stream(data))
+            # p3.start()
+
+        subject = msg.subject
+        reply = msg.reply
+        await nc_client.publish(msg.reply,b'Received!')
+        print("Received a message on '{subject} {reply}': {data}".format(
+            subject=subject, reply=reply, data=data))
+        
+    except TypeError as e:
+        print(TypeError," Nats msg callback error >> ", e)
 
 async def main():
     lmdb_known()
@@ -337,34 +380,39 @@ async def main():
     
     pipeline = Gst.parse_launch('fakesrc ! queue ! fakesink')
 
-    # Init GObject loop to handle Gstreamer Bus Events
-    loop = GLib.MainLoop()
+    # # Init GObject loop to handle Gstreamer Bus Events
+    # loop = GLib.MainLoop()
 
-    bus = pipeline.get_bus()
-    # allow bus to emit messages to main thread
-    bus.add_signal_watch()
+    # bus = pipeline.get_bus()
+    # # allow bus to emit messages to main thread
+    # bus.add_signal_watch()
 
-    # Add handler to specific signal
-    bus.connect("message", on_message, loop)
+    # # Add handler to specific signal
+    # bus.connect("message", on_message, loop)
+    await nc_client.connect(servers=["nats://216.48.181.154:5222"])
+    print("Nats Connected")
+    
+    await nc_client.subscribe("service.device_discovery", cb=cb)
+    print("subscribed")
 
     # Start pipeline
     pipeline.set_state(Gst.State.PLAYING)
 
-    for i in range(3,4):
+    # for i in range(3,4):
     
-        device_urn = 'uuid:eaadf637-a191-4ae7-8156-07433934718b'
-        stream_url = os.getenv('RTSP_URL_{id}'.format(id=i))
-        target= await gst_stream(device_id=i, urn=device_urn, location=stream_url, device_type=device_types[i])
-        time.sleep(5)
+    #     device_urn = 'uuid:eaadf637-a191-4ae7-8156-07433934718b'
+    #     stream_url = os.getenv('RTSP_URL_{id}'.format(id=i))
+    #     target= await gst_stream(device_id=i, urn=device_urn, location=stream_url, device_type=device_types[i])
+    #     time.sleep(5)
 
     
-    try:
-        loop.run()
-    except Exception:
-        traceback.print_exc()
-        loop.quit()
+    # try:
+    #     loop.run()
+    # except Exception:
+    #     traceback.print_exc()
+    #     loop.quit()
 
-    # Stop Pipeline
+    # # Stop Pipeline
     pipeline.set_state(Gst.State.NULL)
     del pipeline
 
